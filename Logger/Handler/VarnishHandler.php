@@ -4,7 +4,12 @@ namespace Kamlesh\VarnishLog\Logger\Handler;
 use Magento\Framework\Stdlib\DateTime\TimezoneInterface;
 use Monolog\Handler\StreamHandler;
 use Monolog\Logger;
+use Magento\Framework\Filesystem\Driver\File;
+use Magento\Framework\App\Filesystem\DirectoryList;
 
+/**
+ * Class VarnishHandler
+ */
 class VarnishHandler extends StreamHandler
 {
     /**
@@ -14,17 +19,28 @@ class VarnishHandler extends StreamHandler
 
     /**
      * @param TimezoneInterface $timezone
-     * @param string $file
+     * @param DirectoryList $directoryList
+     * @param File $filesystem
+     * @param string $fileName
      * @param int $level
      */
     public function __construct(
         TimezoneInterface $timezone,
-        $file = 'var/log/varnish_purge.log',
+        DirectoryList $directoryList,
+        File $filesystem,
+        $fileName = 'varnish_purge.log',
         $level = Logger::DEBUG
     ) {
         $this->timezone = $timezone;
-        parent::__construct($file, $level);
-    }
+        $logPath = $directoryList->getPath(DirectoryList::VAR_DIR) . 
+            DIRECTORY_SEPARATOR . 'log' . 
+            DIRECTORY_SEPARATOR . $fileName;
+        
+        // Ensure directory exists
+        $logDir = dirname($logPath);
+        $filesystem->createDirectory($logDir);
+        
+        parent::__construct($logPath, $level);
 
     /**
      * Format log message with additional context

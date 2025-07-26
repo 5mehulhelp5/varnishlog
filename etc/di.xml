@@ -10,7 +10,11 @@
     </type>
     <type name="Kamlesh\VarnishLog\Logger\Handler\VarnishHandler">
         <arguments>
-            <argument name="file" xsi:type="string">var/log/varnish_purge.log</argument>
+            <argument name="timezone" xsi:type="object">Magento\Framework\Stdlib\DateTime\Timezone</argument>
+            <argument name="directoryList" xsi:type="object">Magento\Framework\App\Filesystem\DirectoryList</argument>
+            <argument name="filesystem" xsi:type="object">Magento\Framework\Filesystem\Driver\File</argument>
+            <argument name="fileName" xsi:type="string">varnish_purge.log</argument>
+            <argument name="level" xsi:type="const">Monolog\Logger::INFO</argument>
         </arguments>
     </type>
 </config>
