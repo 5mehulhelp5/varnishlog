@@ -41,6 +41,7 @@ class VarnishHandler extends StreamHandler
         $filesystem->createDirectory($logDir);
         
         parent::__construct($logPath, $level);
+    }
 
     /**
      * Format log message with additional context
