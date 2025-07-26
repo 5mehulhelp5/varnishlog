@@ -1,5 +1,5 @@
 <?php
-namespace Defsys\VarnishLog\Logger;
+namespace Kamlesh\VarnishLog\Logger;
 
 class VarnishLogger extends \Monolog\Logger
 {

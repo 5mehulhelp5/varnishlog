@@ -2,7 +2,7 @@
 <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
         xsi:noNamespaceSchemaLocation="urn:magento:framework:Event/etc/events.xsd">
     <event name="clean_cache_by_tags">
-        <observer name="defsys_varnish_log_cache_invalidation" 
-                  instance="Defsys\VarnishLog\Observer\CacheInvalidation"/>
+        <observer name="Kamlesh_varnish_log_cache_invalidation" 
+                  instance="Kamlesh\VarnishLog\Observer\CacheInvalidation"/>
     </event>
 </config>

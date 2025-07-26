@@ -15,7 +15,7 @@ composer require barkamlesh/varnishlog
 
 ### Enable the module
 ```bash
-php bin/magento module:enable Defsys_VarnishLog
+php bin/magento module:enable Kamlesh_VarnishLog
 php bin/magento setup:upgrade
 ```
 
