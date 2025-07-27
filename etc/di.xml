@@ -17,4 +17,26 @@
             <argument name="level" xsi:type="const">Monolog\Logger::INFO</argument>
         </arguments>
     </type>
+    <type name="Kamlesh\VarnishLog\Logger\CatalogVarnishLogger">
+        <arguments>
+            <argument name="name" xsi:type="string">CatalogVarnishLogger</argument>
+            <argument name="handlers" xsi:type="array">
+                <item name="catalogvarnishlog" xsi:type="object">Kamlesh\VarnishLog\Logger\Handler\CatalogVarnishHandler</item>
+            </argument>
+        </arguments>
+    </type>
+    <type name="Kamlesh\VarnishLog\Logger\Handler\CatalogVarnishHandler">
+        <arguments>
+            <argument name="timezone" xsi:type="object">Magento\Framework\Stdlib\DateTime\Timezone</argument>
+            <argument name="directoryList" xsi:type="object">Magento\Framework\App\Filesystem\DirectoryList</argument>
+            <argument name="filesystem" xsi:type="object">Magento\Framework\Filesystem\Driver\File</argument>
+            <argument name="fileName" xsi:type="string">catalog_varnish_purge.log</argument>
+            <argument name="level" xsi:type="const">Monolog\Logger::INFO</argument>
+        </arguments>
+    </type>
+    <type name="Kamlesh\VarnishLog\Observer\CacheInvalidation">
+        <arguments>
+            <argument name="authSession" xsi:type="object">Magento\Backend\Model\Auth\Session\Proxy</argument>
+        </arguments>
+    </type>
 </config>

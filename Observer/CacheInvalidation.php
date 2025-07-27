@@ -10,19 +10,11 @@ use Magento\Backend\Model\Auth\Session;
 
 class CacheInvalidation implements ObserverInterface
 {
-    private VarnishLogger $logger;
-    private CatalogVarnishLogger $catalogLogger;
-    private ?Session $authSession;
-
     public function __construct(
-        VarnishLogger $logger,
-        CatalogVarnishLogger $catalogLogger,
-        ?Session $authSession = null
-    ) {
-        $this->logger = $logger;
-        $this->catalogLogger = $catalogLogger;
-        $this->authSession = $authSession;
-    }
+        private readonly VarnishLogger $logger,
+        private readonly CatalogVarnishLogger $catalogLogger,
+        private readonly ?Session $authSession = null
+    ) {}
 
     /**
      * Execute observer
@@ -126,15 +118,31 @@ class CacheInvalidation implements ObserverInterface
     private function getUserInfo(): string
     {
         try {
-            if ($this->authSession && 
-                $this->authSession->getUser() && 
-                $this->authSession->getUser()->getUserName()) {
-                return $this->authSession->getUser()->getUserName();
+            if ($this->authSession && $this->authSession->isLoggedIn()) {
+                $user = $this->authSession->getUser();
+                if ($user) {
+                    $userName = $user->getUserName();
+                    if ($userName) {
+                        return $userName;
+                    }
+                    
+                    // Fallback to email if username is not available
+                    $userEmail = $user->getEmail();
+                    if ($userEmail) {
+                        return $userEmail;
+                    }
+                }
             }
         } catch (\Exception $e) {
             $this->logger->warning('Could not get user info: ' . $e->getMessage());
         }
-        return 'N/A';
+        
+        // If we get here, try to get info from PHP_AUTH_USER for API calls
+        if (isset($_SERVER['PHP_AUTH_USER'])) {
+            return $_SERVER['PHP_AUTH_USER'] . ' (API)';
+        }
+        
+        return 'System';  // Changed from N/A to System as it's likely a system operation if no user is found
     }
 
     /**
