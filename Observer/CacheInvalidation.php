@@ -57,28 +57,57 @@ class CacheInvalidation implements ObserverInterface
             'timestamp' => date('Y-m-d H:i:s')
         ];
 
-        // Log only if we have Magento cache tags
-        if (strpos($allTags, 'cat_') !== false || 
-            strpos($allTags, 'cms_') !== false || 
-            strpos($allTags, 'store_') !== false) {
-            
-            $this->logger->info('Cache purge for tags: ' . $allTags, $context);
+        // First log the complete set of tags being purged
+        $this->logger->debug('Raw cache tags received: ' . $allTags, $context);
 
-            // Additional details for specific tag types
-            foreach ($tags as $tag) {
-                if (strpos($tag, 'cat_c_') === 0) {
-                    $categoryId = substr($tag, 6); // Remove 'cat_c_' prefix
-                    $this->logger->info(
-                        'Category cache invalidated',
-                        ['category_id' => $categoryId, 'tag' => $tag]
-                    );
-                } elseif (strpos($tag, 'cms_') === 0) {
-                    $this->logger->info(
-                        'CMS cache invalidated',
-                        ['cms_tag' => $tag]
-                    );
-                }
+        // Categorize and log specific types of cache invalidations
+        $categoryTags = [];
+        $productTags = [];
+        $cmsTags = [];
+        
+        foreach ($tags as $tag) {
+            // Category tags: cat_c, cat_c_p, cat_p
+            if (strpos($tag, 'cat_c_') === 0) {
+                $categoryId = substr($tag, 6);
+                $categoryTags[] = ['id' => $categoryId, 'tag' => $tag, 'type' => 'category'];
+            } elseif (strpos($tag, 'cat_p_') === 0) {
+                $categoryId = substr($tag, 6);
+                $categoryTags[] = ['id' => $categoryId, 'tag' => $tag, 'type' => 'category_products'];
             }
+            
+            // Product tags
+            elseif (strpos($tag, 'cat_p') === 0) {
+                $productTags[] = $tag;
+            }
+            
+            // CMS tags
+            elseif (strpos($tag, 'cms_') === 0) {
+                $cmsTags[] = $tag;
+            }
+        }
+
+        // Log detailed information for each type
+        if (!empty($categoryTags)) {
+            $this->logger->info(
+                'Category cache invalidation',
+                array_merge($context, ['category_details' => $categoryTags])
+            );
+        }
+
+        if (!empty($productTags)) {
+            $this->logger->info(
+                'Product cache invalidation',
+                array_merge($context, ['product_tags' => $productTags])
+            );
+        }
+
+        if (!empty($cmsTags)) {
+            $this->logger->info(
+                'CMS cache invalidation',
+                array_merge($context, ['cms_tags' => $cmsTags])
+            );
+        }
+    }
         }
     }
 }
