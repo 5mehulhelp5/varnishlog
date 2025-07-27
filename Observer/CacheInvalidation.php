@@ -39,75 +39,149 @@ class CacheInvalidation implements ObserverInterface
      */
     public function execute(\Magento\Framework\Event\Observer $observer): void
     {
-        $tags = $observer->getEvent()->getTags();
-        
-        if (!is_array($tags) || empty($tags)) {
-            return;
-        }
-
-        $user = 'N/A';
-        if ($this->authSession && $this->authSession->getUser()) {
-            $user = $this->authSession->getUser()->getUserName();
-        }
-
-        $allTags = implode(', ', $tags);
-        $context = [
-            'purge_tags' => $allTags,
-            'user' => $user,
-            'timestamp' => date('Y-m-d H:i:s')
-        ];
-
-        // First log the complete set of tags being purged
-        $this->logger->debug('Raw cache tags received: ' . $allTags, $context);
-
-        // Categorize and log specific types of cache invalidations
-        $categoryTags = [];
-        $productTags = [];
-        $cmsTags = [];
-        
-        foreach ($tags as $tag) {
-            // Category tags: cat_c, cat_c_p, cat_p
-            if (strpos($tag, 'cat_c_') === 0) {
-                $categoryId = substr($tag, 6);
-                $categoryTags[] = ['id' => $categoryId, 'tag' => $tag, 'type' => 'category'];
-            } elseif (strpos($tag, 'cat_p_') === 0) {
-                $categoryId = substr($tag, 6);
-                $categoryTags[] = ['id' => $categoryId, 'tag' => $tag, 'type' => 'category_products'];
+        try {
+            $event = $observer->getEvent();
+            if (!$event) {
+                $this->logger->error('No event data available in observer');
+                return;
             }
+
+            $tags = $event->getTags();
+            if (!is_array($tags) || empty($tags)) {
+                $this->logger->debug('No cache tags to process');
+                return;
+            }
+
+            // Get user information safely
+            $user = $this->getUserInfo();
             
-            // Product tags
-            elseif (strpos($tag, 'cat_p') === 0) {
-                $productTags[] = $tag;
-            }
+            // Basic context for all log entries
+            $context = $this->prepareBaseContext($tags, $user);
             
-            // CMS tags
-            elseif (strpos($tag, 'cms_') === 0) {
-                $cmsTags[] = $tag;
-            }
-        }
+            // Log raw tags for debugging
+            $allTags = implode(', ', $tags);
+            $this->logger->info('Cache purge initiated', $context);
+            
+            // Process and categorize tags
+            $categorizedTags = $this->categorizeTags($tags);
+            
+            // Log each category of tags
+            $this->logCategorizedTags($categorizedTags, $context);
 
-        // Log detailed information for each type
-        if (!empty($categoryTags)) {
-            $this->logger->info(
-                'Category cache invalidation',
-                array_merge($context, ['category_details' => $categoryTags])
-            );
-        }
-
-        if (!empty($productTags)) {
-            $this->logger->info(
-                'Product cache invalidation',
-                array_merge($context, ['product_tags' => $productTags])
-            );
-        }
-
-        if (!empty($cmsTags)) {
-            $this->logger->info(
-                'CMS cache invalidation',
-                array_merge($context, ['cms_tags' => $cmsTags])
-            );
+        } catch (\Exception $e) {
+            $this->logger->error('Error processing cache tags: ' . $e->getMessage(), [
+                'exception' => $e->getTraceAsString()
+            ]);
         }
     }
+
+    /**
+     * Get current user information
+     *
+     * @return string
+     */
+    private function getUserInfo(): string
+    {
+        try {
+            if ($this->authSession && 
+                $this->authSession->getUser() && 
+                $this->authSession->getUser()->getUserName()) {
+                return $this->authSession->getUser()->getUserName();
+            }
+        } catch (\Exception $e) {
+            $this->logger->warning('Could not get user info: ' . $e->getMessage());
+        }
+        return 'N/A';
+    }
+
+    /**
+     * Prepare base context for logging
+     *
+     * @param array $tags
+     * @param string $user
+     * @return array
+     */
+    private function prepareBaseContext(array $tags, string $user): array
+    {
+        return [
+            'purge_tags' => implode(', ', $tags),
+            'user' => $user,
+            'timestamp' => date('Y-m-d H:i:s'),
+            'total_tags' => count($tags)
+        ];
+    }
+
+    /**
+     * Categorize tags by type
+     *
+     * @param array $tags
+     * @return array
+     */
+    private function categorizeTags(array $tags): array
+    {
+        $categorized = [
+            'category' => [],
+            'product' => [],
+            'cms' => []
+        ];
+
+        foreach ($tags as $tag) {
+            if (!is_string($tag)) {
+                continue;
+            }
+
+            if (strpos($tag, 'cat_c_') === 0) {
+                $categoryId = substr($tag, 6);
+                $categorized['category'][] = [
+                    'id' => $categoryId,
+                    'tag' => $tag,
+                    'type' => 'category'
+                ];
+            } elseif (strpos($tag, 'cat_p_') === 0) {
+                $categoryId = substr($tag, 6);
+                $categorized['category'][] = [
+                    'id' => $categoryId,
+                    'tag' => $tag,
+                    'type' => 'category_products'
+                ];
+            } elseif (strpos($tag, 'cat_p') === 0) {
+                $categorized['product'][] = $tag;
+            } elseif (strpos($tag, 'cms_') === 0) {
+                $categorized['cms'][] = $tag;
+            }
+        }
+
+        return $categorized;
+    }
+
+    /**
+     * Log categorized tags
+     *
+     * @param array $categorizedTags
+     * @param array $baseContext
+     * @return void
+     */
+    private function logCategorizedTags(array $categorizedTags, array $baseContext): void
+    {
+        if (!empty($categorizedTags['category'])) {
+            $this->logger->info(
+                'Category cache invalidation',
+                array_merge($baseContext, ['category_details' => $categorizedTags['category']])
+            );
+        }
+
+        if (!empty($categorizedTags['product'])) {
+            $this->logger->info(
+                'Product cache invalidation',
+                array_merge($baseContext, ['product_tags' => $categorizedTags['product']])
+            );
+        }
+
+        if (!empty($categorizedTags['cms'])) {
+            $this->logger->info(
+                'CMS cache invalidation',
+                array_merge($baseContext, ['cms_tags' => $categorizedTags['cms']])
+            );
         }
     }
 }
