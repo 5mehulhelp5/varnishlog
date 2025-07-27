@@ -1,168 +1,84 @@
 <?php
+declare(strict_types=1);
+
 namespace Kamlesh\VarnishLog\Observer;
 
 use Magento\Framework\Event\ObserverInterface;
 use Kamlesh\VarnishLog\Logger\VarnishLogger;
-use Magento\Framework\App\RequestInterface;
-use Magento\Framework\HTTP\Client\Curl;
-use Magento\Store\Model\StoreManagerInterface;
+use Magento\Backend\Model\Auth\Session;
 
 class CacheInvalidation implements ObserverInterface
 {
     /**
      * @var VarnishLogger
      */
-    protected $logger;
+    private VarnishLogger $logger;
 
     /**
-     * @var \Magento\Backend\Model\Auth\Session|null
+     * @var Session|null
      */
-    protected $authSession;
+    private ?Session $authSession;
 
     /**
-     * @var RequestInterface
+     * @param VarnishLogger $logger
+     * @param Session|null $authSession
      */
-    protected $request;
-
-    /**
-     * @var Curl
-     */
-    protected $curl;
-
-    /**
-     * @var StoreManagerInterface
-     */
-    protected $storeManager;
-
     public function __construct(
         VarnishLogger $logger,
-        \Magento\Backend\Model\Auth\Session $authSession = null,
-        RequestInterface $request,
-        Curl $curl,
-        StoreManagerInterface $storeManager
+        ?Session $authSession = null
     ) {
         $this->logger = $logger;
         $this->authSession = $authSession;
-        $this->request = $request;
-        $this->curl = $curl;
-        $this->storeManager = $storeManager;
     }
 
-    public function execute(\Magento\Framework\Event\Observer $observer)
+    /**
+     * Execute observer
+     *
+     * @param \Magento\Framework\Event\Observer $observer
+     * @return void
+     */
+    public function execute(\Magento\Framework\Event\Observer $observer): void
     {
         $tags = $observer->getEvent()->getTags();
-        $ip = $_SERVER['REMOTE_ADDR'] ?? 'N/A';
-        $referrer = $_SERVER['HTTP_REFERER'] ?? 'N/A';
+        
+        if (!is_array($tags) || empty($tags)) {
+            return;
+        }
+
         $user = 'N/A';
         if ($this->authSession && $this->authSession->getUser()) {
             $user = $this->authSession->getUser()->getUserName();
         }
 
-        $allTags = is_array($tags) ? implode(', ', $tags) : 'N/A';
+        $allTags = implode(', ', $tags);
         $context = [
-            'ip' => $ip,
+            'purge_tags' => $allTags,
             'user' => $user,
-            'referrer' => $referrer,
-            'request_path' => $this->request->getRequestUri(),
-            'all_tags' => $allTags
+            'timestamp' => date('Y-m-d H:i:s')
         ];
 
-        $this->logger->info('Varnish cache purge triggered.', $context);
+        // Log only if we have Magento cache tags
+        if (strpos($allTags, 'cat_') !== false || 
+            strpos($allTags, 'cms_') !== false || 
+            strpos($allTags, 'store_') !== false) {
+            
+            $this->logger->info('Cache purge for tags: ' . $allTags, $context);
 
-        if (!is_array($tags)) {
-            return;
-        }
-
-        foreach ($tags as $tag) {
-            if (strpos($tag, 'c_') === 0) {
-                $categoryId = substr($tag, 2);
-                $this->verifyCategoryCache($categoryId, $tag, $context);
-            } elseif (strpos($tag, 'p_') === 0) {
-                $productId = substr($tag, 2);
-                $this->verifyProductCache($productId, $tag, $context);
+            // Additional details for specific tag types
+            foreach ($tags as $tag) {
+                if (strpos($tag, 'cat_c_') === 0) {
+                    $categoryId = substr($tag, 6); // Remove 'cat_c_' prefix
+                    $this->logger->info(
+                        'Category cache invalidated',
+                        ['category_id' => $categoryId, 'tag' => $tag]
+                    );
+                } elseif (strpos($tag, 'cms_') === 0) {
+                    $this->logger->info(
+                        'CMS cache invalidated',
+                        ['cms_tag' => $tag]
+                    );
+                }
             }
-        }
-    }
-
-    /**
-     * Verify category cache synchronization
-     *
-     * @param string $categoryId
-     * @param string $tag
-     * @param array $context
-     */
-    private function verifyCategoryCache($categoryId, $tag, array $context)
-    {
-        try {
-            $stores = $this->storeManager->getStores();
-            foreach ($stores as $store) {
-                $categoryUrl = $store->getBaseUrl() . 'catalog/category/view/id/' . $categoryId;
-                $this->verifyUrl($categoryUrl, "Category ID: {$categoryId}");
-            }
-            $this->logger->info(
-                "Category cache verified successfully",
-                array_merge($context, ['category_id' => $categoryId, 'tag' => $tag])
-            );
-        } catch (\Exception $e) {
-            $this->logger->error(
-                "Category cache verification failed: " . $e->getMessage(),
-                array_merge($context, ['category_id' => $categoryId, 'tag' => $tag])
-            );
-        }
-    }
-
-    /**
-     * Verify product cache synchronization
-     *
-     * @param string $productId
-     * @param string $tag
-     * @param array $context
-     */
-    private function verifyProductCache($productId, $tag, array $context)
-    {
-        try {
-            $stores = $this->storeManager->getStores();
-            foreach ($stores as $store) {
-                $productUrl = $store->getBaseUrl() . 'catalog/product/view/id/' . $productId;
-                $this->verifyUrl($productUrl, "Product ID: {$productId}");
-            }
-            $this->logger->info(
-                "Product cache verified successfully",
-                array_merge($context, ['product_id' => $productId, 'tag' => $tag])
-            );
-        } catch (\Exception $e) {
-            $this->logger->error(
-                "Product cache verification failed: " . $e->getMessage(),
-                array_merge($context, ['product_id' => $productId, 'tag' => $tag])
-            );
-        }
-    }
-
-    /**
-     * Verify URL cache status
-     *
-     * @param string $url
-     * @param string $context
-     * @throws \Exception
-     */
-    private function verifyUrl($url, $context)
-    {
-        $this->curl->addHeader('X-Magento-Debug', '1');
-        $this->curl->get($url);
-        
-        $headers = $this->curl->getHeaders();
-        
-        // Check if we got a HIT from Varnish
-        $cacheStatus = $headers['X-Magento-Cache-Debug'] ?? 'MISS';
-        
-        if ($cacheStatus !== 'HIT') {
-            throw new \Exception(
-                sprintf(
-                    'Cache verification failed for %s. Status: %s',
-                    $context,
-                    $cacheStatus
-                )
-            );
         }
     }
 }
